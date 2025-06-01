@@ -3,7 +3,7 @@ import { SplashMessage } from "../components/SplashMessage";
 import { StartScreen } from "../components/StartScreen";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { convertHydrantPointsToPolygon, getHydrantenDataByCity } from "../lib/data";
+import { convertHydrantPointsToPolygon, getCityData, getHydrantenDataByCity, type CityData } from "../lib/data";
 import { LatLng, Polygon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useState } from "react";
@@ -12,6 +12,7 @@ import * as GameConstants from "../GameConstants";
 import { Navbar } from "../components/Navbar";
 import Map from "../components/Map";
 import team122Logo from '../assets/team122_logo_lang.png';
+import CityDialog from "@/components/CityDialog";
 
 
 export interface GlobalData {
@@ -24,17 +25,10 @@ export interface GlobalData {
   hydrantPolygon: Polygon;
   finishMessage?: string;
   showHint: boolean;
+  selectedCity?: CityData;
 }
 
 export default function Home() {
-  // const Map = useMemo(
-  //   () =>
-  //     dynamic(() => import("./components/Map"), {
-  //       ssr: false,
-  //     }),
-  //   []
-  // );
-
   const [globalData, setGlobalData] = useState<GlobalData>({
     hydrants: [],
     allHydrants: [],
@@ -44,12 +38,15 @@ export default function Home() {
     clickedPositions: [],
     hydrantPolygon: new Polygon([]),
     showHint: false,
+    selectedCity: undefined,
   });
   
   const [loadingData, setLoadingData] = useState(false);
   const [showStartScreen, setShowStartScreen] = useState(true);
 
   const [gemeinde, setGemeinde] = useState<string | null>(null);
+
+  const [cities, setCities] = useState<CityData[]>([]);
   
   useEffect(() => {
     async function startGame() {
@@ -58,19 +55,22 @@ export default function Home() {
 
       try{
         if(gemeinde){
-          const hydrants = await getHydrantenDataByCity(gemeinde);
-          console.log("Hydranten", hydrants);
 
-          if(hydrants?.length >= 3) {
-            const hydrantPolygon = convertHydrantPointsToPolygon(hydrants);
-            setGlobalData({...globalData, cityName: gemeinde, allHydrants: hydrants, hydrants: [], hydrantPolygon: hydrantPolygon});
-            setShowStartScreen(false);
-          } else {
-            setGlobalData({...globalData, finishMessage: "Keine Wasserentnahmestellen für "+gemeinde+" gefunden!"})
-            setTimeout(()=>{
-              setGlobalData({...globalData, finishMessage: undefined});
-            }, 1000)
-          }
+          const cities = await getCityData(gemeinde);
+          console.log("Cities", cities);
+
+            if(cities?.length === 1) {
+              const cityData = cities[0];
+              setGlobalData({...globalData, selectedCity: cityData});
+            } else if(cities && cities.length > 1) {
+              // Handle multiple cities case
+              setCities(cities);
+            } else  {
+              setGlobalData({...globalData, finishMessage: "Keine Wasserentnahmestellen für "+gemeinde+" gefunden!"})
+              setTimeout(()=>{
+                setGlobalData({...globalData, finishMessage: undefined});
+              }, 1000);
+            }
 
         }
       }catch (error) {
@@ -83,9 +83,32 @@ export default function Home() {
     startGame();
   }, [gemeinde]);
 
+  useEffect(() => {
+    async function loadHydrants(data: CityData) {
+      const hydrants = await getHydrantenDataByCity(data);
+      console.log("Hydranten", hydrants);
+
+      if(hydrants?.length >= 3) {
+        const hydrantPolygon = convertHydrantPointsToPolygon(hydrants);
+        setGlobalData({...globalData, cityName: data.name, allHydrants: hydrants, hydrants: [], hydrantPolygon: hydrantPolygon});
+        setShowStartScreen(false);
+      } else {
+        setGlobalData({...globalData, finishMessage: "Keine Wasserentnahmestellen für "+data.name+" gefunden!"})
+        setTimeout(()=>{
+          setGlobalData({...globalData, finishMessage: undefined});
+        }, 1000);
+      }
+    }
+
+    if(globalData.selectedCity) {
+      loadHydrants(globalData.selectedCity);
+    }
+  }, [globalData.selectedCity]);
 
   useEffect(()=>{
     setGemeinde("");
+    setGlobalData({ ...globalData, selectedCity: undefined });
+    setCities([]);
   }, [showStartScreen])
 
   return <div className="h-full bg-blue-200">
@@ -132,6 +155,10 @@ export default function Home() {
         )}
         </>
       )
+    }
+
+    {
+      cities.length > 0 && !globalData.selectedCity && <CityDialog cities={cities} globalData={globalData} setGlobalData={setGlobalData} />
     }
       <div className="fixed bottom-1 right-1 z-1000">
         <a href="https://www.team122.at/" className="hover:cursor-pointer">

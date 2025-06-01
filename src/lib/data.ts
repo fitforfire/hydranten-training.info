@@ -2,21 +2,78 @@ import * as GameConstants from "../GameConstants";
 import bbox from "@turf/bbox";
 import { booleanPointInPolygon, concave, featureCollection, point } from "@turf/turf";
 import { GeoJSON, LatLng, Polygon, Util } from "leaflet";
-import { capitalizeFirstLetter } from "./utils";
 
+function overpassSearch() {
+    return `[out:json][timeout:25];
 
-const baseUrl =
+        is_in({lat}, {lng})->.a;
+
+        area.a["name"="{city}"]["boundary"="administrative"]["admin_level"~"7|8|9|10|11"]->.searchArea;
+
+        (
+        nwr["emergency"="fire_hydrant"](area.searchArea);
+        nwr["emergency"="suction_point"](area.searchArea);
+        );
+        out geom;
+        `;
+}
+
+const baseNominatimUrl = 'https://nominatim.openstreetmap.org/search.php?city={city}&format=jsonv2';
+
+const baseOverpassUrl = 'https://overpass-api.de/api/interpreter?data=' + overpassSearch();
     // 'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25]; (nwr["emergency"="fire_hydrant"]({bbox}); nwr["emergency"="suction_point"]({bbox});); out geom;';^
-   'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];area["name"="{city}"]["boundary"="administrative"]["admin_level"~"7|8|9|10|11"]->.searchArea;(nwr["emergency"="fire_hydrant"](area.searchArea);nwr["emergency"="suction_point"](area.searchArea););out geom;';
-
+//    'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];area["name"="{city}"]["boundary"="administrative"]["admin_level"~"7|8|9|10|11"]->.searchArea;(nwr["emergency"="fire_hydrant"](area.searchArea);nwr["emergency"="suction_point"](area.searchArea););out geom;';
+    
 
 // TODO: BBOX vs City name -> Wenn Grenze dann ist der nächste Hydrant vielleicht in einer anderen Gemeinde
 
-export async function getHydrantenDataByCity(gemeinde: string): Promise<LatLng[]> {
-    const cityName= capitalizeFirstLetter(gemeinde);
+export type CityData = {
+    name: string;
+    displayName: string;
+    lat: number;
+    lng: number;
+};
 
-    const url = Util.template(baseUrl, {
-        city: cityName
+export async function getCityData(gemeinde: string): Promise<CityData[] | null> {
+    const url = Util.template(baseNominatimUrl, {
+        city: gemeinde
+    });
+
+    let data = null;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const resData = await response.json();
+
+        if (resData) {
+            data = resData.map((d: {name: string, display_name: string, lat: string, lon: string})=> {
+
+                return {
+                    name: d.name,
+                    displayName: d.display_name,
+                    lat: parseFloat(d.lat),
+                    lng: parseFloat(d.lon)
+                };
+
+            })
+        }
+
+    } catch (error) {
+        console.error('There was a problem with the fetch operation:', error);
+    }
+
+    // TODO: Set correct data type
+    return data;
+}
+
+
+export async function getHydrantenDataByCity(cityData: CityData): Promise<LatLng[]> {
+    const url = Util.template(baseOverpassUrl, {
+        city: cityData.name,
+        lat: cityData.lat,
+        lng: cityData.lng
     });
 
     let data = null;

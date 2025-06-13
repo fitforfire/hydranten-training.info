@@ -16,7 +16,7 @@ export default function Impressum(){
                     <p>Florian Bischof</p>
                     <p>Lerchenstraße 4</p>
                     <p>6922 Wolfurt</p>
-                    <p><a href="mailto:help@lagekarte.info" className="hover:underline">help@lagekarte.info</a></p>
+                    <p><a href="mailto:support@hydranten-training.info" className="hover:underline">support@hydranten-training.info</a></p>
                     <br></br>
                     <br></br>
                     <br></br>
